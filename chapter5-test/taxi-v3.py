@@ -158,7 +158,6 @@ class SARSALambdaAgent(SARSAAgent):
         if done:
             self.e *= 0.
 
-
 agent = SARSALambdaAgent(env)
 
 # 训练
