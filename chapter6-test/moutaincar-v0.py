@@ -49,7 +49,7 @@ class TileCoder:
         self.layers = layers
         self.features = features
         self.codebook = {}
-    def get_feature(self, codeword):
+    def get_feature(self, codeword): # [codeword] ==> [feature]
         if codeword in self.codebook:
             return self.codebook[codeword]
         count = len(self.codebook)
@@ -57,7 +57,7 @@ class TileCoder:
             return hash(codeword) % self.features
         self.codebook[codeword] = count
         return count
-    def __call__(self, floats=(), ints=()):
+    def __call__(self, floats=(), ints=()): # [observation, action] ==> [codewords] ==> [features]
         dim = len(floats)
         scaled_floats = tuple(f * self.layers * self.layers for f in floats)
         features = []
@@ -78,12 +78,12 @@ class SARSAAgent:
         self.learning_rate = learning_rate # 学习率
         self.epsilon = epsilon # 探索
 
-    def encode(self, observation, action): # 编码
+    def encode(self, observation, action): # 编码 [observation, action] ==> [code] ==> [features]
         states = tuple((observation - self.obs_low) / self.obs_scale)
         actions = (action,)
         return self.encoder(states, actions)
 
-    def get_q(self, observation, action): # 动作价值
+    def get_q(self, observation, action): # 动作价值  [observation, action] ==> [code] ==> [features] ==> [Q(w)]
         features = self.encode(observation, action)
         return self.w[features].sum()
 
@@ -99,6 +99,23 @@ class SARSAAgent:
         td_error = u - self.get_q(observation, action)
         features = self.encode(observation, action)
         self.w[features] += (self.learning_rate * td_error)
+
+class SARSALambdaAgent(SARSAAgent):
+    def __init__(self, env, layers=8, features=1893, gamma=1., learning_rate=0.03, epsilon=0.001, lambd=0.9):
+        super().__init__(env=env, layers=layers, features=features, gamma=gamma, learning_rate=learning_rate, epsilon=epsilon)
+        self.lambd = lambd
+        self.z = np.zeros(features)
+    def learn(self, observation, action, reward, next_observation, done, next_action):
+        u = reward
+        if not done:
+            u += (self.gamma * self.get_q(next_observation, next_action))
+            self.z *= (self.gamma * self.lambd)
+            features = self.encode(observation, action)
+            self.z[features] = 1.
+        td_error = u - self.get_q(observation, action)
+        self.w += (self.learning_rate * td_error * self.z)
+        if done:
+            self.z = np.zeros_like(self.z)
 
 def play_sarsa(env, agent, train=False, render=False):
     episode_reward = 0
@@ -118,11 +135,10 @@ def play_sarsa(env, agent, train=False, render=False):
     print('Needed Steps:{}',episode_reward)
     return episode_reward
 
-
-agent = SARSAAgent(env)
+agent = SARSALambdaAgent(env)
 
 # 训练
-episodes = 500
+episodes = 180
 episode_rewards = []
 for episode in range(episodes):
     episode_reward = play_sarsa(env, agent, train=True)
@@ -135,3 +151,4 @@ agent.epsilon = 0.
 episode_rewards = [play_sarsa(env, agent, render=True) for _ in range(10)]
 env.close()
 print('平均回合奖励 = {} / {} = {}'.format(sum(episode_rewards), len(episode_rewards), np.mean(episode_rewards)))
+
