@@ -135,7 +135,7 @@ def play_sarsa(env, agent, train=False, render=False):
     print('Needed Steps:{}',episode_reward)
     return episode_reward
 
-agent = SARSALambdaAgent(env)
+# agent = SARSALambdaAgent(env)
 
 # # 训练
 # episodes = 180
@@ -164,10 +164,13 @@ class Chart:
 
 class DQNReplayer:
     def __init__(self, capacity):
-        self.memory = pd.DataFrame(index=range(capacity), columns=['observation', 'action', 'reward', 'next_observation', 'done'])
+        self.memory = pd.DataFrame(index=range(capacity),
+                columns=['observation', 'action', 'reward',
+                'next_observation', 'terminated'])
         self.i = 0
         self.count = 0
         self.capacity = capacity
+
     def store(self, *args):
         self.memory.loc[self.i] = np.asarray(args, dtype=object)
         self.i = (self.i + 1) % self.capacity
@@ -175,39 +178,49 @@ class DQNReplayer:
 
     def sample(self, size):
         indices = np.random.choice(self.count, size=size)
-        return (np.stack(self.memory.loc[indices, field]) for field in self.memory.columns)
+        return (np.stack(self.memory.loc[indices, field]) for field in
+                self.memory.columns)
 
 
 class DQNAgent:
-    def __init__(self, env, net_kwargs={}, gamma=0.9, epsilon=0.05, replyer_capacity=10000, batch_size=16):
+    def __init__(self, env, net_kwargs={}, gamma=0.99, epsilon=0.001,
+             replayer_capacity=5000, batch_size=8):
         observation_dim = env.observation_space.shape[0]
         self.action_n = env.action_space.n
         self.gamma = gamma
         self.epsilon = epsilon
 
         self.batch_size = batch_size
-        self.replayer = DQNReplayer(replyer_capacity) # 经验回放
+        self.replayer = DQNReplayer(replayer_capacity) # 经验回放
 
-        self.evaluate_net = self.build_network(input_size=observation_dim, output_size=self.action_n, **net_kwargs) # 评估网络
-        self.target_net = self.build_network(input_size=observation_dim, output_size=self.action_n, **net_kwargs) # 目标网络
+        self.evaluate_net = self.build_network(input_size=observation_dim,
+                output_size=self.action_n, **net_kwargs) # 评估网络
+        self.target_net = self.build_network(input_size=observation_dim,
+                output_size=self.action_n, **net_kwargs) # 目标网络
 
         self.target_net.set_weights(self.evaluate_net.get_weights())
 
-
-    def build_network(self, input_size, hidden_sizes, output_size, activation=tf.nn.relu, output_activation=None, learning_rate=0.01): # 构建网络
+    def build_network(self, input_size, hidden_sizes, output_size,
+                activation=tf.nn.relu, output_activation=None,
+                learning_rate=0.01): # 构建网络
         model = keras.Sequential()
         for layer, hidden_size in enumerate(hidden_sizes):
             kwargs = dict(input_shape=(input_size,)) if not layer else {}
-            model.add(keras.layers.Dense(units=hidden_size, activation=activation, **kwargs))
-        model.add(keras.layers.Dense(units=output_size, activation=output_activation)) # 输出层
+            model.add(keras.layers.Dense(units=hidden_size,
+                    activation=activation, **kwargs))
+        model.add(keras.layers.Dense(units=output_size,
+                activation=output_activation)) # 输出层
         optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
         model.compile(loss='mse', optimizer=optimizer)
         return model
 
     def learn(self, observation, action, reward, next_observation, done):
         self.replayer.store(observation, action, reward, next_observation, done) # 存储经验
-        observations, actions, rewards, next_observations, dones = self.replayer.sample(self.batch_size) # 经验回放
-        next_qs = self.target_net.predict(next_observations, verbose=0)
+
+        observations, actions, rewards, next_observations, dones = \
+                self.replayer.sample(self.batch_size) # 经验回放
+
+        next_qs = self.target_net.predict(next_observations, verbose=0) # s => q
         next_max_qs = next_qs.max(axis=-1)
         us = rewards + self.gamma * (1. - dones) * next_max_qs
         targets = self.evaluate_net.predict(observations, verbose=0)
@@ -216,7 +229,6 @@ class DQNAgent:
 
         if done: # 更新目标网络
             self.target_net.set_weights(self.evaluate_net.get_weights())
-
 
     def decide(self, observation): # epsilon贪心策略
         if np.random.rand() < self.epsilon:
@@ -239,10 +251,10 @@ def play_qlearning(env, agent, train=False, render=False):
         if done:
             break
         observation = next_observation
-    print('episode_reward:{}', episode_reward)
+    print('episode_reward:{}, count:{}', episode_reward, agent.replayer.count)
     return episode_reward
 
-net_kwargs = {'hidden_sizes' : [16,], "learning_rate" : 0.1}
+net_kwargs = {'hidden_sizes' : [8,], "learning_rate" : 0.1}
 agent = DQNAgent(env, net_kwargs=net_kwargs)
 
 # 训练
