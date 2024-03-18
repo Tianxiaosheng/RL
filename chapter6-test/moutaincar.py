@@ -6,7 +6,6 @@ import gym
 import tensorflow.compat.v2 as tf
 import time
 from tensorflow import keras
-import tensorflow as ttf
 
 env = gym.make('MountainCar-v0')
 print('观测空间 = {}'.format(env.observation_space))
@@ -14,13 +13,6 @@ print('动作空间 = {}'.format(env.action_space))
 print('位置范围 = {}'.format((env.unwrapped.min_position, env.unwrapped.max_position)))
 print('速度范围 = {}'.format((-env.unwrapped.max_speed, env.unwrapped.max_speed)))
 print('目标位置 = {}'.format(env.unwrapped.goal_position))
-
-print(ttf.__version__)
-
-if ttf.executing_eagerly():  
-    print("Eager Execution is enabled.")  
-else:  
-    print("Eager Execution is disabled. TensorFlow is running in Graph Execution mode.")
 
 class Chart:
     def __init__(self):
@@ -75,15 +67,18 @@ class DQNAgent:
 
         model = keras.Sequential() # 构建网络
 
-        for layer, hidden_size in enumerate(hidden_sizes):
-            kwargs = dict(input_shape=(input_size,)) if not layer else {}
+        for layer, hidden_size in enumerate(hidden_sizes):  # 添加隐藏层
             model.add(keras.layers.Dense(units=hidden_size,
-                                         activation=activation, **kwargs))
+                                         activation=activation,
+                                         input_shape=(input_size,) if layer == 0 else {}))
 
         model.add(keras.layers.Dense(units=output_size,
-                activation=output_activation)) # 输出层
-        optimizer = tf.optimizers.Adam(learning_rate)
-        model.compile(loss='mse', optimizer=optimizer)
+                                     activation=output_activation)) # 添加输出层
+    
+        optimizer = tf.optimizers.Adam(learning_rate=learning_rate) # 配置优化器
+
+        model.compile(loss='mse', optimizer=optimizer) # 编译模型
+
         return model
 
     def learn(self, observation, action, reward, next_observation, done):
@@ -93,17 +88,16 @@ class DQNAgent:
         observations, actions, rewards, next_observations, terminateds = \
                 self.replayer.sample(self.batch_size) # 经验回放
 
-        next_qs = self.target_net(next_observations, training=False)
+        next_qs = self.target_net(next_observations, training=False) # 计算目标Q值
         next_max_qs = next_qs.numpy().max(axis=-1)
     
-        us = rewards + self.gamma * (1. - terminateds) * next_max_qs
-
-        targets = self.evaluate_net(observations, training=False)  
+        us = rewards + self.gamma * (1. - terminateds) * next_max_qs # 计算Q值的目标
+        targets = self.evaluate_net(observations, training=False)
         targets_numpy = targets.numpy()  
         targets_numpy[np.arange(us.shape[0]), actions] = us  
         targets = tf.convert_to_tensor(targets_numpy, dtype=tf.float32)
 
-        self.evaluate_net.fit(observations, targets, verbose=0)
+        self.evaluate_net.fit(observations, targets, verbose=0) # 训练评估网络:
 
         if done: # 更新目标网络
             self.target_net.set_weights(self.evaluate_net.get_weights())
@@ -135,7 +129,7 @@ def play_qlearning(env, agent, train=False, render=False):
         elif next_observation[0] <= -0.5:
             reward = -0.1
 
-        episode_reward += reward
+        episode_reward += real_reward
         if train:
             agent.learn(observation, action, reward, next_observation,
                     done)
@@ -150,7 +144,7 @@ net_kwargs = {'hidden_sizes' : [64, 64], 'learning_rate' : 0.01}
 agent = DQNAgent(env, net_kwargs=net_kwargs)
 
 # 训练
-episodes = 500
+episodes = 240
 episode_rewards = []
 chart = Chart()
 for episode in range(episodes):
