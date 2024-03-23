@@ -27,26 +27,9 @@ class Chart:
         self.ax.set_ylabel('episode reward')
         self.fig.canvas.draw()
 
-# class DQNReplayer:
-#     def __init__(self, capacity):
-#         self.memory = np.zeros((capacity, 5), dtype=object)  # 假设每个经验包含5个字段
-#         self.i = 0
-#         self.count = 0
-#         self.capacity = capacity
-
-#     def store(self, observation, action, reward, next_observation, done):  
-#         self.memory[self.i] = (observation, action, reward, next_observation, done)  
-#         self.i = (self.count) % self.capacity  # 循环使用缓冲区  
-#         self.count = self.count + 1  # 确保计数不超过容量  
-
-#     def sample(self, size):
-#         indices = np.random.choice(min(self.count, self.capacity), size=size)
-#         #return [np.array([self.memory[idx][i] for idx in indices]) for i in range(5)]
-#         return (np.stack(self.memory[indices, field]) for field in range(5))
-
 class DQNReplayer:
-    def __init__(self, memory_size):
-        self.memory = deque([], maxlen=memory_size)
+    def __init__(self, capacity):
+        self.memory = deque([], maxlen=capacity)
         self.Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
     def sample(self, batch_size):
         batch_data = random.sample(self.memory, batch_size)
@@ -63,7 +46,7 @@ class DQNReplayer:
         return len(self.memory)
 
 # 定义DQN网络结构
-class DQNNet(nn.Module):  
+class DQNNet(nn.Module):
     def __init__(self, input_size, hidden_sizes, output_size):  
         super(DQNNet, self).__init__()
         self.model = nn.Sequential(
@@ -77,7 +60,7 @@ class DQNNet(nn.Module):
         return self.model(x)
 
 # 定义DQNAgent类  
-class DQNAgent:  
+class DQNAgent:
     def __init__(self, env, net_kwargs={}, gamma=0.99, epsilon=0.01,  
                  replayer_capacity=10000, batch_size=64):  
         self.observation_dim = env.observation_space.shape[0]  
@@ -94,10 +77,10 @@ class DQNAgent:
         self.target_net = DQNNet(self.observation_dim, net_kwargs.get('hidden_sizes', [64, 64]), self.action_n).to(self.device)
 
         # 初始化目标网络的权重与评估网络相同  
-        self.update_target_net()  
+        self.update_target_net()
 
-        # 定义优化器  
-        self.optimizer = optim.Adam(self.evaluate_net.parameters(), lr=net_kwargs.get('learning_rate', 0.001))  
+        # 定义优化器
+        self.optimizer = optim.Adam(self.evaluate_net.parameters(), lr=net_kwargs.get('learning_rate', 0.01))
 
         # 定义损失函数  
         self.criterion = nn.MSELoss()  
@@ -127,12 +110,12 @@ class DQNAgent:
             max_next_q_values = self.target_net(next_states).max(1)[0].view(-1, 1)
             q_targets = rewards + self.gamma * max_next_q_values * (1 - dones)
         l = self.criterion(predict_q_values, q_targets)
- 
+
         self.optimizer.zero_grad()
         l.backward()
         self.optimizer.step()
  
-        if self.count % self.capacity == 0:
+        if transition_dict.done:
             # copy model parameters
             self.target_net.load_state_dict(self.evaluate_net.state_dict())
  
@@ -177,25 +160,28 @@ def play_qlearning(env, agent, repalymemory, train=False, render=False):
         if done:
             break
         observation = next_observation
-    print('episode_reward:{}, count:{}'.format(episode_reward, len(repalymemory)))
+    print('episode_reward:{}, count:{}'.format(episode_reward, agent.count))
     return episode_reward
 
 net_kwargs = {'hidden_sizes' : [64, 64], 'learning_rate' : 0.01}
 agent = DQNAgent(env, net_kwargs=net_kwargs)
 
 # 训练
-episodes = 240
+episodes = 200
 episode_rewards = []
 chart = Chart()
-replaymemory = DQNReplayer(memory_size=10000)
+replaymemory = DQNReplayer(capacity=10000)
 for episode in range(episodes):
     episode_reward = play_qlearning(env, agent, replaymemory, train=True, render=True)
     episode_rewards.append(episode_reward)
-#     chart.plot(episode_rewards)
-# chart.fig.show()
+    chart.plot(episode_rewards)
+print('Training->平均回合奖励 = {} / {} = {}'.format(sum(episode_rewards),
+        len(episode_rewards), np.mean(episode_rewards)))
+chart.fig.show()
+
 
 # 测试
 agent.epsilon = 0. # 取消探索
 episode_rewards = [play_qlearning(env, agent, replaymemory, render=True) for _ in range(100)]
-print('平均回合奖励 = {} / {} = {}'.format(sum(episode_rewards),
+print('Evaluate->平均回合奖励 = {} / {} = {}'.format(sum(episode_rewards),
         len(episode_rewards), np.mean(episode_rewards)))
