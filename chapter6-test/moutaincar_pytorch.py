@@ -18,14 +18,11 @@ print('速度范围 = {}'.format((-env.unwrapped.max_speed, env.unwrapped.max_sp
 print('目标位置 = {}'.format(env.unwrapped.goal_position))
 
 class Chart:
-    def __init__(self):
-        self.fig, self.ax = plt.subplots(1, 1)
+    def __init__(self, plt):
+        self.plt = plt
     def plot(self, episode_rewards):
-        self.ax.clear()
-        self.ax.plot(episode_rewards)
-        self.ax.set_xlabel('iteration')
-        self.ax.set_ylabel('episode reward')
-        self.fig.canvas.draw()
+        self.plt(episode_rewards)
+        self.plt.show()
 
 class DQNReplayer:
     def __init__(self, capacity):
@@ -62,7 +59,7 @@ class DQNNet(nn.Module):
 # 定义DQNAgent类  
 class DQNAgent:
     def __init__(self, env, net_kwargs={}, gamma=0.99, epsilon=0.01,  
-                 replayer_capacity=10000, batch_size=64):  
+                 replayer_capacity=20000, batch_size=64):
         self.observation_dim = env.observation_space.shape[0]  
         self.action_n = env.action_space.n  
         self.gamma = gamma  
@@ -148,7 +145,7 @@ def play_qlearning(env, agent, repalymemory, train=False, render=False):
             reward = 10000
         elif next_observation[0] <= -0.5:
             reward = -0.1
-
+        reward = real_reward
         repalymemory.push(observation, action, reward, next_observation, done)
         episode_reward += reward
 
@@ -163,22 +160,22 @@ def play_qlearning(env, agent, repalymemory, train=False, render=False):
     print('episode_reward:{}, count:{}'.format(episode_reward, agent.count))
     return episode_reward
 
-net_kwargs = {'hidden_sizes' : [64, 64], 'learning_rate' : 0.01}
+net_kwargs = {'hidden_sizes' : [64, 64], 'learning_rate' : 0.001}
 agent = DQNAgent(env, net_kwargs=net_kwargs)
 
 # 训练
-episodes = 200
+episodes = 500
 episode_rewards = []
-chart = Chart()
-replaymemory = DQNReplayer(capacity=10000)
+
+replaymemory = DQNReplayer(capacity=60000)
 for episode in range(episodes):
     episode_reward = play_qlearning(env, agent, replaymemory, train=True, render=True)
     episode_rewards.append(episode_reward)
-    chart.plot(episode_rewards)
 print('Training->平均回合奖励 = {} / {} = {}'.format(sum(episode_rewards),
         len(episode_rewards), np.mean(episode_rewards)))
-chart.fig.show()
 
+plt.plot(episode_rewards)
+plt.show()
 
 # 测试
 agent.epsilon = 0. # 取消探索
