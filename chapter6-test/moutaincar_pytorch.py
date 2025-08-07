@@ -92,7 +92,6 @@ class DQNAgent:
         next_states = transition_dict.next_state
         dones = np.expand_dims(transition_dict.done, axis=-1) # 扩充维度
 
-
         states = torch.tensor(states, dtype=torch.float).to(self.device)
         actions = torch.tensor(actions, dtype=torch.int64).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float).to(self.device)

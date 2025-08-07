@@ -150,12 +150,12 @@ print('动作数量 = {}'.format(env.action_space.n))
 policy = np.zeros((22, 11, 2, 2))
 policy[20:, :, :, 0] = 1
 policy[:20, :, :, 1] = 1
-# q = evaluate_action_monte_carlo(env, policy)
-# v = (q * policy).sum(axis=-1)
-# plot(v)
+q = evaluate_action_monte_carlo(env, policy)
+v = (q * policy).sum(axis=-1)
+plot(v)
 
 #print('随机奖励:{}'.format(play_once(env)))
 
-policy, q = monte_carlo_with_soft(env)
-v = q.max(axis=-1)
-plot(policy.argmax(-1))
+# policy, q = monte_carlo_with_soft(env)
+# v = q.max(axis=-1)
+# plot(policy.argmax(-1))
