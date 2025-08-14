@@ -50,7 +50,7 @@ class SACAgent:
                                              output_activation=nn.Softmax)
 
         self.actor_optimizer = optim.Adam(self.actor_net.parameters(),
-                                          lr=actor_kwargs.get('learning_rate', 0.001))
+                                          lr=actor_kwargs.get('learning_rate', 0.0003))
         
         # 双Q网络
         self.q0_net = self._build_network(hidden_sizes=critic_kwargs.get('hidden_sizes'),
@@ -62,9 +62,9 @@ class SACAgent:
                                           output_size=self.action_n)
 
         self.q0_optimizer = optim.Adam(self.q0_net.parameters(),
-                                       lr=critic_kwargs.get('learning_rate', 0.001))
+                                       lr=critic_kwargs.get('learning_rate', 0.0003))
         self.q1_optimizer = optim.Adam(self.q1_net.parameters(),
-                                       lr=critic_kwargs.get('learning_rate', 0.001))
+                                       lr=critic_kwargs.get('learning_rate', 0.0003))
         
         # V网络（评估网络和目标网络）
         self.v_evaluate_net = self._build_network(hidden_sizes=critic_kwargs.get('hidden_sizes'),
@@ -76,7 +76,7 @@ class SACAgent:
                                                 output_size=1)
 
         self.v_optimizer = optim.Adam(self.v_evaluate_net.parameters(),
-                                      lr=critic_kwargs.get('learning_rate', 0.001))
+                                      lr=critic_kwargs.get('learning_rate', 0.0003))
         
         # 初始化目标网络
         self.update_target_net()
@@ -126,38 +126,36 @@ class SACAgent:
         q0s = self.q0_net(obs_tensor)    # [1, action_n]
         q1s = self.q1_net(obs_tensor)    # [1, action_n]
 
-        # 训练Actor网络（SAC损失）
+        # 1.训练Actor网络（SAC损失）
         self.actor_optimizer.zero_grad()
         q01s = torch.min(q0s, q1s)  # 取两个Q值的最小值
 
         # SAC的Actor损失：最大化期望Q值 + 熵正则化
         log_pis = torch.log(torch.clamp(pis, 1e-10, 1.0))  # 数值稳定性
-        entropy = -torch.sum(pis * log_pis, dim=1)  # 策略熵
-        q_pi = torch.sum(pis * q01s, dim=1)  # 期望Q值
         actor_loss = torch.mean(torch.sum(pis * (self.alpha * log_pis - q01s), dim=1))
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        # 训练V网络
+        # 2.训练V网络
         self.v_optimizer.zero_grad()
         with torch.no_grad():
             # 计算目标V值：E[Q - α*log π]
             entropic_q01s = q01s - self.alpha * log_pis
             v_targets = torch.sum(pis * entropic_q01s, dim=1)
-        
+
         v_pred = self.v_evaluate_net(obs_tensor).squeeze()
         v_loss = F.mse_loss(v_pred, v_targets)
         v_loss.backward()
         self.v_optimizer.step()
 
-        # 训练Q网络
+        # 3.训练Q网络
         self.q0_optimizer.zero_grad()
         self.q1_optimizer.zero_grad()
-        
+
         with torch.no_grad():
             next_vs = self.v_target_net(next_obs_tensor).squeeze()
             q_targets = reward_tensor + self.gamma * (1 - terminated) * next_vs
-        
+
         # 更新Q值
         q0_pred = self.q0_net(obs_tensor)
         q1_pred = self.q1_net(obs_tensor)
@@ -170,7 +168,7 @@ class SACAgent:
 
         q0_loss = F.mse_loss(q0_pred, q0_target)
         q1_loss = F.mse_loss(q1_pred, q1_target)
-        
+
         q0_loss.backward()
         q1_loss.backward()
         self.q0_optimizer.step()

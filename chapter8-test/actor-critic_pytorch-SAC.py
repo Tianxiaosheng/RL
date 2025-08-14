@@ -52,7 +52,7 @@ class Chart:
 
 class SACAgent:
     def __init__(self, env, actor_kwargs, critic_kwargs, gamma=0.99, 
-                 alpha=0.2, net_learning_rate=0.1, replayer_capacity=10000, 
+                 alpha=0.2, net_learning_rate=0.1, replayer_capacity=1000,
                  batch_size=64, target_update_freq=100):
         self.observation_n = env.observation_space.shape[0]
         self.action_n = env.action_space.n
@@ -63,7 +63,7 @@ class SACAgent:
         self.target_update_freq = target_update_freq
         self.update_count = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+
         # 经验回放缓冲区
         self.replayer = DQNReplayer(replayer_capacity)
 
@@ -75,7 +75,7 @@ class SACAgent:
         self.actor_net.to(self.device)
         self.actor_optimizer = optim.Adam(self.actor_net.parameters(),
                                           lr=actor_kwargs.get('learning_rate', 0.001))
-        
+
         # 双Q网络
         self.q0_net = self._build_network(hidden_sizes=critic_kwargs.get('hidden_sizes'),
                                           input_size=self.observation_n,
@@ -89,7 +89,7 @@ class SACAgent:
                                        lr=critic_kwargs.get('learning_rate', 0.001))
         self.q1_optimizer = optim.Adam(self.q1_net.parameters(),
                                        lr=critic_kwargs.get('learning_rate', 0.001))
-        
+
         # V网络（评估网络和目标网络）
         self.v_evaluate_net = self._build_network(hidden_sizes=critic_kwargs.get('hidden_sizes'),
                                                   input_size=self.observation_n,
@@ -138,23 +138,11 @@ class SACAgent:
             return dist.sample().item()
 
     def learn(self, transition_dict):
-        states = transition_dict.state
-        actions = np.expand_dims(transition_dict.action, axis=-1) # 扩充维度
-        rewards = np.expand_dims(transition_dict.reward, axis=-1) # 扩充维度
-        next_states = transition_dict.next_state
-        dones = np.expand_dims(transition_dict.done, axis=-1) # 扩充维度
-
-        obs_tensor = torch.tensor(states, dtype=torch.float).to(self.device)
-        action_tensor = torch.tensor(actions, dtype=torch.int64).to(self.device)
-        reward_tensor = torch.tensor(rewards, dtype=torch.float).to(self.device)
-        next_obs_tensor = torch.tensor(next_states, dtype=torch.float).to(self.device)
-        terminated_tensor = torch.tensor(dones, dtype=torch.float).to(self.device)
-
-        print("obs_tensor: ", obs_tensor)
-        print("action_tensor: ", action_tensor)
-        print("reward_tensor: ", reward_tensor)
-        print("next_obs_tensor: ", next_obs_tensor)
-        print("terminated_tensor: ", terminated_tensor)
+        obs_tensor = torch.FloatTensor(transition_dict.state)
+        action_tensor = torch.LongTensor(transition_dict.action).unsqueeze(0)
+        reward_tensor = torch.FloatTensor(transition_dict.reward).unsqueeze(0)
+        next_obs_tensor = torch.FloatTensor(transition_dict.next_state)
+        terminated_tensor = torch.FloatTensor(transition_dict.done).unsqueeze(0)
 
         # 获取当前策略和Q值
         pis = self.actor_net(obs_tensor)  # [batch_size, action_n]
@@ -167,8 +155,6 @@ class SACAgent:
 
         # SAC的Actor损失：最大化期望Q值 + 熵正则化
         log_pis = torch.log(torch.clamp(pis, 1e-10, 1.0))  # 数值稳定性
-        entropy = -torch.sum(pis * log_pis, dim=1)  # 策略熵
-        q_pi = torch.sum(pis * q01s, dim=1)  # 期望Q值
         actor_loss = torch.mean(torch.sum(pis * (self.alpha * log_pis - q01s), dim=1))
         actor_loss.backward()
         self.actor_optimizer.step()
@@ -243,7 +229,7 @@ def play_sac(env, agent, train=False, render=False):
 env = gym.make('Acrobot-v1')
 env.seed(0)  # 设置环境随机种子
 
-actor_kwargs = {'hidden_sizes' : [64, 32], 'learning_rate' : 0.0003}
+actor_kwargs = {'hidden_sizes' : [64, 32], 'learning_rate' : 0.001}
 critic_kwargs = {'hidden_sizes' : [64, 32], 'learning_rate' : 0.0003}
 agent = SACAgent(env, actor_kwargs=actor_kwargs, critic_kwargs=critic_kwargs,
                  alpha=0.1, batch_size=32, target_update_freq=50)
